@@ -1,0 +1,63 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sitesync-backend
+
+  datasource:
+    url: jdbc:postgresql://${SUPABASE_DB_HOST}:5432/postgres
+    username: postgres
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_ADDRESS}
+    password: ${GMAIL_APP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  mail:
+    from: ${GMAIL_ADDRESS}
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiry-minutes: 15
+    refresh-token-expiry-days: 30
+  otp:
+    expiry-minutes: 10
+    length: 6
+
+# ---------------------------------------------------------------------
+# Environment variables required before this application will start:
+#
+#   SUPABASE_DB_HOST       - from Supabase dashboard: Project Settings -> Database
+#   SUPABASE_DB_PASSWORD   - the password you set when creating the Supabase project
+#   JWT_SECRET             - generate with: openssl rand -base64 64
+#   GMAIL_ADDRESS          - the Gmail account sending OTP emails
+#   GMAIL_APP_PASSWORD     - a Gmail "App Password" (NOT your login password -
+#                            Google Account -> Security -> 2-Step Verification
+#                            (enable if not already) -> App Passwords -> generate one)
+#
+# Local development: create a .env file (add it to .gitignore - never
+# commit real secrets) and either export each line manually, or use
+# something like the "EnvFile" run configuration in IntelliJ, or
+# spring-dotenv as a dependency if you want automatic .env loading.
+# ---------------------------------------------------------------------

@@ -1,0 +1,43 @@
+# Add this to your Spring Boot project's src/main/resources/application.yml
+# (or application.properties, translated to key=value form).
+#
+# Get the actual host/password from: Supabase dashboard -> Project Settings
+# -> Database -> Connection string (URI tab shows the exact host).
+#
+# IMPORTANT: never commit the real password to source control. Use
+# environment variables (as below) and set them in your deployment
+# environment / a local .env file that's gitignored.
+
+spring:
+  datasource:
+    # Direct connection (port 5432) — recommended for a normal Spring Boot
+    # app with its own HikariCP pool. Use the pooler (port 6543) only if
+    # you specifically need PgBouncer-level connection multiplexing, and
+    # note it has caveats with JPA prepared statement caching.
+    url: jdbc:postgresql://${SUPABASE_DB_HOST}:5432/postgres
+    username: postgres
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    hibernate:
+      # Use 'validate' once schema.sql has been run manually (recommended,
+      # since you already have an exact hand-written schema matching the
+      # Flutter models). Do NOT use 'update' or 'create' against a schema
+      # you've deliberately hand-authored — Hibernate's auto-DDL can drift
+      # from exactly what schema.sql defines (naming conventions, check
+      # constraints, etc. don't always round-trip cleanly).
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# Environment variables to set (locally: a .env file + something like
+# spring-dotenv, or just export them; in production: your host's secrets
+# manager):
+#   SUPABASE_DB_HOST=db.xxxxxxxxxxxx.supabase.co
+#   SUPABASE_DB_PASSWORD=<the password you set when creating the project>

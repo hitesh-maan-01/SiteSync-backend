@@ -1,0 +1,46 @@
+# Add these under the existing `spring:` key from spring_boot_datasource.yml
+# (database/spring_boot_datasource.yml), and the top-level `app:` key
+# alongside it — this file only shows the NEW additions for auth.
+
+spring:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_ADDRESS}
+    password: ${GMAIL_APP_PASSWORD}   # NOT your regular Gmail password — see note below
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  mail:
+    # The "From" address on outgoing OTP emails — typically the same
+    # address as spring.mail.username above, since Gmail SMTP generally
+    # requires the From address to match the authenticated account.
+    from: ${GMAIL_ADDRESS}
+  jwt:
+    # Generate a long random secret, e.g.: openssl rand -base64 64
+    # Must be kept out of source control — set via environment variable.
+    secret: ${JWT_SECRET}
+    access-token-expiry-minutes: 15      # short-lived, matches getCurrentUser()'s
+                                          # silent-refresh-on-401 behavior in Flutter
+    refresh-token-expiry-days: 30
+  otp:
+    expiry-minutes: 10
+    length: 6
+
+# Environment variables to set (same place as SUPABASE_DB_HOST/PASSWORD):
+#   JWT_SECRET=<output of: openssl rand -base64 64>
+#   GMAIL_ADDRESS=youraddress@gmail.com
+#   GMAIL_APP_PASSWORD=<a Gmail "App Password", NOT your login password>
+#
+# Gmail App Password setup (required — Gmail blocks plain-password SMTP
+# login for security):
+#   1. Enable 2-Step Verification on the Google account, if not already on
+#      (Google Account -> Security -> 2-Step Verification)
+#   2. Google Account -> Security -> App Passwords
+#   3. Generate one for "Mail" / "Other (custom name)" -> use that 16-char
+#      value as GMAIL_APP_PASSWORD, not your real password
