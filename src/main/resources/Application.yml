@@ -34,7 +34,24 @@ spring:
           starttls:
             enable: true
 
+  servlet:
+    multipart:
+      # Camera photos can easily exceed Spring's default 1MB limit —
+      # sized generously since image_picker on the Flutter side doesn't
+      # compress by default.
+      max-file-size: 15MB
+      max-request-size: 15MB
+
 app:
+  storage:
+    upload-dir: ./uploads
+    # Must match wherever this Spring Boot instance is actually reachable
+    # from the Flutter app — same host:port as app_config.dart's
+    # _devBaseUrl for local dev (http://10.0.2.2:8080 on the Android
+    # emulator's side, but the SERVER's own view of itself is just
+    # localhost:8080 — set this to whatever the server should embed in
+    # photo URLs it hands back).
+    public-base-url: http://localhost:8080
   mail:
     from: ${GMAIL_ADDRESS}
   jwt:
