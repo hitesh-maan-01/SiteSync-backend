@@ -8,9 +8,11 @@ import com.sitesync.auth.dto.UserResponse;
 import com.sitesync.auth.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -100,5 +102,33 @@ public class AuthController {
     ) {
         authService.registerFcmToken(currentUserId(authentication), request.token);
         return ResponseEntity.ok(ApiResponse.ok(null, "Token registered."));
+    }
+
+    @PostMapping("/supervisors/invite")
+    @PreAuthorize("hasRole('CONTRACTOR')")
+    public ResponseEntity<ApiResponse<UserResponse>> inviteSupervisor(
+            Authentication authentication,
+            @Valid @RequestBody InviteSupervisorRequest request
+    ) {
+        UserResponse supervisor = authService.inviteSupervisor(
+                currentUserId(authentication), request.name, request.identifier, request.temporaryPassword);
+        return ResponseEntity.ok(ApiResponse.ok(supervisor, "Supervisor invited."));
+    }
+
+    @GetMapping("/supervisors")
+    @PreAuthorize("hasRole('CONTRACTOR')")
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getMySupervisors(
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.getMySupervisors(currentUserId(authentication))));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            Authentication authentication,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        authService.changePassword(currentUserId(authentication), request.currentPassword, request.newPassword);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Password changed."));
     }
 }

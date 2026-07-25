@@ -2,7 +2,6 @@ package com.sitesync.auth.exception;
 
 import com.sitesync.auth.dto.ApiResponse;
 import com.sitesync.project.exception.ProjectNotFoundException;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -38,6 +37,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ProjectNotFoundException.class)
     public ResponseEntity<ApiResponse<Object>> handleProjectNotFound(ProjectNotFoundException ex) {
         return ResponseEntity.status(ex.getStatus()).body(ApiResponse.fail(ex.getMessage()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        // Covers cases like ProjectService.validateSupervisorAssignment's
+        // "supervisor not found" and UUID.fromString failures on malformed
+        // IDs — client input errors, not server bugs, so 400 with the
+        // real message rather than falling through to the generic 500
+        // handler below and hiding what actually went wrong.
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.fail(ex.getMessage()));
     }
 
     @ExceptionHandler(BadCredentialsException.class)

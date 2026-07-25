@@ -1,11 +1,10 @@
 package com.sitesync.auth.service;
 
+import com.sitesync.auth.entity.OtpCode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
-
-import com.sitesync.auth.entity.OtpCode;
 
 /**
  * Sends OTP codes via Gmail SMTP (JavaMailSender). Gmail SMTP requires an
@@ -49,6 +48,33 @@ public class EmailService {
         // Not wrapped in try/catch here deliberately - a failure to send
         // should propagate as a 500 (ServerFailure in Flutter) rather than
         // silently succeeding with "OTP sent" when it wasn't.
+        mailSender.send(message);
+    }
+
+    /**
+     * Sends a supervisor their login credentials after a contractor
+     * creates their account (AuthService.inviteSupervisor). Contains a
+     * plaintext temporary password by necessity - this is the one and
+     * only time it exists outside the (already-hashed) database, since
+     * AuthService never logs or stores it in plaintext. The email itself
+     * is the delivery mechanism; there's no separate confirm-link/OTP
+     * step for supervisor accounts the way self-signup has one.
+     */
+    public void sendSupervisorInviteEmail(String toEmail, String name, String temporaryPassword) {
+        String subject = "You've been added to SiteSync";
+        String body = "Hi " + name + ",\n\n"
+                + "A contractor has added you as a supervisor on SiteSync. "
+                + "Sign in with:\n\n"
+                + "Email: " + toEmail + "\n"
+                + "Temporary password: " + temporaryPassword + "\n\n"
+                + "Please change your password after logging in (Settings > Change Password).";
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(fromAddress);
+        message.setTo(toEmail);
+        message.setSubject(subject);
+        message.setText(body);
+
         mailSender.send(message);
     }
 }

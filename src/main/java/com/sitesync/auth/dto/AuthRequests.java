@@ -40,6 +40,19 @@ public class AuthRequests {
         @NotBlank public String otp;
     }
 
+    /** POST /api/auth/supervisors/invite - body: { name, identifier, temporaryPassword } */
+    public static class InviteSupervisorRequest {
+        @NotBlank public String name;
+        @NotBlank public String identifier; // email — supervisor invites are email-only, same reasoning as signup OTP
+        @NotBlank public String temporaryPassword;
+    }
+
+    /** POST /api/auth/change-password - body: { currentPassword, newPassword } */
+    public static class ChangePasswordRequest {
+        @NotBlank public String currentPassword;
+        @NotBlank public String newPassword;
+    }
+
     /** POST /api/auth/refresh - body: { refreshToken } */
     public static class RefreshRequest {
         @NotBlank public String refreshToken;

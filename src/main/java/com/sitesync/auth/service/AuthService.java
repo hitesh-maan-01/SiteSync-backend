@@ -1,8 +1,8 @@
 package com.sitesync.auth.service;
 
-import com.sitesync.auth.dto.UserResponse;
 import com.sitesync.auth.dto.AuthSessionResponse;
 import com.sitesync.auth.dto.RefreshResponse;
+import com.sitesync.auth.dto.UserResponse;
 import com.sitesync.auth.entity.OtpCode;
 import com.sitesync.auth.entity.User;
 import com.sitesync.auth.entity.UserRole;
@@ -16,8 +16,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Orchestrates every auth flow AuthController exposes. Each public method
@@ -35,19 +37,22 @@ public class AuthService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final OtpService otpService;
+    private final EmailService emailService;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             RefreshTokenService refreshTokenService,
-            OtpService otpService
+            OtpService otpService,
+            EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
         this.otpService = otpService;
+        this.emailService = emailService;
     }
 
     private boolean isEmail(String identifier) {
@@ -160,7 +165,7 @@ public class AuthService {
         String newAccessToken = jwtService.generateAccessToken(user.getId(), user.getRole().toWireValue());
         return new RefreshResponse(newAccessToken);
     }
-
+    @Transactional
     public void logout(UUID userId) {
         refreshTokenService.revokeAllForUser(userId);
     }
@@ -169,6 +174,67 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new InvalidCredentialsException("Session expired. Please log in again."));
         user.setFcmToken(token);
+        userRepository.save(user);
+    }
+
+    // -----------------------------------------------------------------
+    // Supervisor management (contractor-only)
+    // -----------------------------------------------------------------
+    /**
+     * Contractor creates a supervisor's account directly, with a
+     * temporary password — per product decision, this is simpler than a
+     * self-service invite-link flow and matches how a contractor already
+     * relates to their workers/vendors (they manage those directly too,
+     * not via invite links). The supervisor is marked emailVerified=true
+     * immediately: the invite email itself (sent here) is the delivery
+     * mechanism, not something requiring a separate OTP confirmation step
+     * the way self-signup does.
+     */
+    @Transactional
+    public UserResponse inviteSupervisor(UUID contractorId, String name, String identifier, String temporaryPassword) {
+        if (!isEmail(identifier)) {
+            throw new InvalidCredentialsException("Supervisor invites currently support email only.");
+        }
+        if (userRepository.existsByEmail(identifier)) {
+            throw new AccountAlreadyExistsException("An account with this email already exists.");
+        }
+
+        User supervisor = new User();
+        supervisor.setName(name);
+        supervisor.setEmail(identifier);
+        supervisor.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        supervisor.setRole(UserRole.SUPERVISOR);
+        supervisor.setEmailVerified(true);
+        supervisor.setInvitedByContractorId(contractorId);
+        supervisor.setMustChangePassword(true);
+        userRepository.save(supervisor);
+
+        emailService.sendSupervisorInviteEmail(identifier, name, temporaryPassword);
+
+        return UserResponse.fromEntity(supervisor);
+    }
+
+    /** GET /api/auth/supervisors — scoped to supervisors THIS contractor invited, not every supervisor system-wide. */
+    public List<UserResponse> getMySupervisors(UUID contractorId) {
+        return userRepository.findByInvitedByContractorIdAndRole(contractorId, UserRole.SUPERVISOR)
+                .stream()
+                .map(UserResponse::fromEntity)
+                .collect(Collectors.toList());
+    }
+
+    // -----------------------------------------------------------------
+    // Password change (any authenticated user — contractor or supervisor)
+    // -----------------------------------------------------------------
+    public void changePassword(UUID userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new InvalidCredentialsException("Session expired. Please log in again."));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException("Current password is incorrect.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         userRepository.save(user);
     }
 

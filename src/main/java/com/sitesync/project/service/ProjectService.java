@@ -1,5 +1,7 @@
 package com.sitesync.project.service;
 
+import com.sitesync.auth.entity.UserRole;
+import com.sitesync.auth.repository.UserRepository;
 import com.sitesync.project.dto.ProjectRequests.CreateProjectRequest;
 import com.sitesync.project.dto.ProjectRequests.UpdateProjectRequest;
 import com.sitesync.project.dto.ProjectResponse;
@@ -26,9 +28,11 @@ import java.util.stream.Collectors;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final UserRepository userRepository;
 
-    public ProjectService(ProjectRepository projectRepository) {
+    public ProjectService(ProjectRepository projectRepository, UserRepository userRepository) {
         this.projectRepository = projectRepository;
+        this.userRepository = userRepository;
     }
 
     public List<ProjectResponse> getProjectsForContractor(UUID contractorId) {
@@ -71,7 +75,9 @@ public class ProjectService {
         project.setExpectedEndDate(parseDateOrNull(request.expectedEndDate));
 
         if (request.assignedSupervisorId != null && !request.assignedSupervisorId.isBlank()) {
-            project.setAssignedSupervisorId(UUID.fromString(request.assignedSupervisorId));
+            UUID supervisorId = UUID.fromString(request.assignedSupervisorId);
+            validateSupervisorAssignment(supervisorId, contractorId);
+            project.setAssignedSupervisorId(supervisorId);
         }
 
         Project saved = projectRepository.save(project);
@@ -103,9 +109,13 @@ public class ProjectService {
             project.setProgressPercent(request.progressPercent);
         }
         if (request.assignedSupervisorId != null) {
-            project.setAssignedSupervisorId(
-                    request.assignedSupervisorId.isBlank() ? null : UUID.fromString(request.assignedSupervisorId)
-            );
+            if (request.assignedSupervisorId.isBlank()) {
+                project.setAssignedSupervisorId(null);
+            } else {
+                UUID supervisorId = UUID.fromString(request.assignedSupervisorId);
+                validateSupervisorAssignment(supervisorId, requesterId);
+                project.setAssignedSupervisorId(supervisorId);
+            }
         }
 
         Project saved = projectRepository.save(project);
@@ -121,6 +131,28 @@ public class ProjectService {
      * silently break if Flutter's exact timestamp format ever varies
      * (e.g. gains a timezone offset suffix).
      */
+    /**
+     * A contractor may only assign a supervisor account THEY invited —
+     * checked via invited_by_contractor_id (see
+     * migration_001_supervisor_invite.sql / AuthService.inviteSupervisor).
+     * Without this check, a contractor could assign any arbitrary UUID —
+     * including another contractor's own account ID — as a project's
+     * supervisor, which would be a real authorization hole, not just bad
+     * data (that user would then satisfy getProjectById's
+     * isAssignedSupervisor check and gain access to the project).
+     */
+    private void validateSupervisorAssignment(UUID supervisorId, UUID contractorId) {
+        var supervisor = userRepository.findById(supervisorId)
+                .orElseThrow(() -> new IllegalArgumentException("Supervisor not found."));
+
+        boolean isSupervisorRole = supervisor.getRole() == UserRole.SUPERVISOR;
+        boolean invitedByThisContractor = contractorId.equals(supervisor.getInvitedByContractorId());
+
+        if (!isSupervisorRole || !invitedByThisContractor) {
+            throw new AccessDeniedException("You can only assign supervisors you've invited.");
+        }
+    }
+
     private LocalDate parseDateOrNull(String isoDateTime) {
         if (isoDateTime == null || isoDateTime.isBlank()) return null;
         // If it's already a bare date (no 'T'), parse directly.
