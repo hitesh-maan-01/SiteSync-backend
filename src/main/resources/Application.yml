@@ -62,6 +62,9 @@ app:
     expiry-minutes: 10
     length: 6
 
+  firebase:
+    service-account-path: sitesync-firebase-adminsdk.json
+
 # ---------------------------------------------------------------------
 # Environment variables required before this application will start:
 #

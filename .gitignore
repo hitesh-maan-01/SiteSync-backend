@@ -28,6 +28,11 @@ target/
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
+/uploads/materials/
 
 ### VS Code ###
 .vscode/
+
+
+# Ignore Firebase Admin SDK private key
+sitesync-firebase-adminsdk.json
