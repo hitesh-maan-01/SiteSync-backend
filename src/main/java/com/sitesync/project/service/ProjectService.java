@@ -26,9 +26,10 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ProjectService {
-
+    
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    
 
     public ProjectService(ProjectRepository projectRepository, UserRepository userRepository) {
         this.projectRepository = projectRepository;
