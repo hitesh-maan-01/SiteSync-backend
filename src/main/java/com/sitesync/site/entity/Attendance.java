@@ -2,6 +2,8 @@ package com.sitesync.site.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Entity
@@ -30,6 +32,9 @@ public class Attendance {
     @Column(name = "\"timestamp\"", nullable = false)
     private Instant timestamp;
 
+    @Column(name = "date", nullable = false)
+    private LocalDate date;
+
     @Column(name = "photo_url")
     private String photoUrl;
 
@@ -54,6 +59,7 @@ public class Attendance {
     @PrePersist
     void onCreate() {
         if (timestamp == null) timestamp = Instant.now();
+        if (date == null) date = LocalDate.ofInstant(timestamp, ZoneId.systemDefault());
     }
 
     public UUID getId() { return id; }
@@ -76,6 +82,9 @@ public class Attendance {
 
     public Instant getTimestamp() { return timestamp; }
     public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
+
+    public LocalDate getDate() { return date; }
+    public void setDate(LocalDate date) { this.date = date; }
 
     public String getPhotoUrl() { return photoUrl; }
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }

@@ -22,6 +22,8 @@ public class ProjectResponse {
     public Double progressPercent;
     public String assignedSupervisorId;
     public String createdAt;
+    public String clientName;
+    public Double estimatedBudget;
 
     public static ProjectResponse fromEntity(Project project) {
         ProjectResponse dto = new ProjectResponse();
@@ -39,6 +41,8 @@ public class ProjectResponse {
         dto.assignedSupervisorId = project.getAssignedSupervisorId() != null
                 ? project.getAssignedSupervisorId().toString() : null;
         dto.createdAt = project.getCreatedAt() != null ? project.getCreatedAt().toString() : null;
+        dto.clientName = project.getClientName();
+        dto.estimatedBudget = project.getEstimatedBudget();
         return dto;
     }
 }

@@ -7,7 +7,7 @@ spring:
 
   datasource:
     url: jdbc:postgresql://${SUPABASE_DB_HOST}:5432/postgres
-    username: postgres
+    username: ${SUPABASE_DB_USER}
     password: ${SUPABASE_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
@@ -68,7 +68,16 @@ app:
 # ---------------------------------------------------------------------
 # Environment variables required before this application will start:
 #
-#   SUPABASE_DB_HOST       - from Supabase dashboard: Project Settings -> Database
+#   SUPABASE_DB_HOST       - Supabase SESSION POOLER host (not direct connection).
+#                            Dashboard: Project Settings -> Database -> Connection Pooling
+#                            -> "Session pooler" tab. Looks like:
+#                            aws-0-<region>.pooler.supabase.com
+#                            (Direct connection is IPv6-only unless you pay for the
+#                            IPv4 add-on, which causes "Connect timed out" errors on
+#                            most home/office networks — the pooler avoids this.)
+#   SUPABASE_DB_USER       - pooler username, format: postgres.<project-ref>
+#                            e.g. postgres.tbeayjpuutjfneqnmmmm
+#                            (shown on the same "Session pooler" tab)
 #   SUPABASE_DB_PASSWORD   - the password you set when creating the Supabase project
 #   JWT_SECRET             - generate with: openssl rand -base64 64
 #   GMAIL_ADDRESS          - the Gmail account sending OTP emails
@@ -76,8 +85,17 @@ app:
 #                            Google Account -> Security -> 2-Step Verification
 #                            (enable if not already) -> App Passwords -> generate one)
 #
-# Local development: create a .env file (add it to .gitignore - never
-# commit real secrets) and either export each line manually, or use
-# something like the "EnvFile" run configuration in IntelliJ, or
-# spring-dotenv as a dependency if you want automatic .env loading.
+# Local development (PowerShell): set each variable in your terminal before
+# running the app, e.g.:
+#
+#   $env:SUPABASE_DB_HOST="aws-0-<region>.pooler.supabase.com"
+#   $env:SUPABASE_DB_USER="postgres.tbeayjpuutjfneqnmmmm"
+#   $env:SUPABASE_DB_PASSWORD="your-password"
+#   $env:JWT_SECRET="your-jwt-secret"
+#   $env:GMAIL_ADDRESS="your-gmail"
+#   $env:GMAIL_APP_PASSWORD="your-app-password"
+#
+# These only last for the current terminal session — re-set them each time
+# you open a new terminal, or use a .env file with spring-dotenv / the
+# IntelliJ "EnvFile" plugin to avoid retyping them.
 # ---------------------------------------------------------------------

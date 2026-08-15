@@ -48,6 +48,12 @@ public class Project {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+     @Column(name = "client_name")
+    private String clientName;
+
+    @Column(name = "estimated_budget")
+    private Double estimatedBudget;
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) createdAt = Instant.now();
@@ -91,4 +97,10 @@ public class Project {
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+
+    public String getClientName() { return clientName; }
+    public void setClientName(String clientName) { this.clientName = clientName; }
+
+    public Double getEstimatedBudget() { return estimatedBudget; }
+    public void setEstimatedBudget(Double estimatedBudget) { this.estimatedBudget = estimatedBudget; }
 }

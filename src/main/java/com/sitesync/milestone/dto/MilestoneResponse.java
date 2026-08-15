@@ -25,6 +25,8 @@ public class MilestoneResponse {
     private LocalDate targetDate;
     private LocalDate completedDate;
     private LocalDateTime updatedAt;
+    private Double progressPercent;
+
 
     public static MilestoneResponse fromEntity(Milestone m) {
         return MilestoneResponse.builder()
@@ -37,6 +39,7 @@ public class MilestoneResponse {
                 .targetDate(m.getTargetDate())
                 .completedDate(m.getCompletedDate())
                 .updatedAt(m.getUpdatedAt())
+                  .progressPercent(m.getProgressPercent())
                 .build();
     }
 }

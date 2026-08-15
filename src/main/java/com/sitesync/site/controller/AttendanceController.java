@@ -5,12 +5,15 @@ import com.sitesync.site.dto.AttendanceRequests.ManualAttendanceRequest;
 import com.sitesync.site.dto.AttendanceResponse;
 import com.sitesync.site.service.AttendanceService;
 import jakarta.validation.Valid;
+
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +43,29 @@ public class AttendanceController {
 
     private UUID currentUserId(Authentication authentication) {
         return (UUID) authentication.getPrincipal();
+    }
+
+    // GET /api/attendance/project/{projectId}/today
+    @GetMapping("/project/{projectId}/today")
+    public ResponseEntity<ApiResponse<List<AttendanceResponse>>> getTodaysAttendance(
+            @PathVariable String projectId,
+            Authentication authentication
+    ) {
+        List<AttendanceResponse> records = attendanceService.getTodaysAttendanceForProject(
+                UUID.fromString(projectId), currentUserId(authentication));
+        return ResponseEntity.ok(ApiResponse.ok(records));
+    }
+
+    // GET /api/attendance/project/{projectId}/date/{date}
+    @GetMapping("/project/{projectId}/date/{date}")
+    public ResponseEntity<ApiResponse<List<AttendanceResponse>>> getAttendanceForDate(
+            @PathVariable String projectId,
+            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            Authentication authentication
+    ) {
+        List<AttendanceResponse> records = attendanceService.getAttendanceForProjectOnDate(
+                UUID.fromString(projectId), currentUserId(authentication), date);
+        return ResponseEntity.ok(ApiResponse.ok(records));
     }
 
     @GetMapping("/project/{projectId}")

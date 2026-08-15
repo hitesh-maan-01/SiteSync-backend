@@ -54,6 +54,13 @@ public class Milestone {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+    
+    @Builder.Default
+    @Column(name = "progress_percent", nullable = false)
+    private Double progressPercent = 0.0;
+
+    public Double getProgressPercent() { return progressPercent; }
+    public void setProgressPercent(Double progressPercent) { this.progressPercent = progressPercent; }
 
     @PrePersist
     protected void onCreate() {
