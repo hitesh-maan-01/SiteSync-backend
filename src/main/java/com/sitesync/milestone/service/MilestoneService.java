@@ -9,6 +9,7 @@ import com.sitesync.milestone.entity.MilestoneStatus;
 import com.sitesync.milestone.entity.MilestoneUpdateLog;
 import com.sitesync.milestone.repository.MilestoneRepository;
 import com.sitesync.milestone.repository.MilestoneUpdateLogRepository;
+import com.sitesync.notification.entity.NotificationSeverity;
 import com.sitesync.notification.service.PushNotificationService;
 import com.sitesync.project.entity.Project;
 import com.sitesync.project.repository.ProjectRepository;
@@ -223,30 +224,33 @@ public class MilestoneService {
      * not thrown) so a missing/expired FCM token never rolls back the
      * milestone completion itself.
      */
-    private void notifyContractorOfCompletion(Milestone milestone) {
-        try {
-            Project project = projectRepository.findById(milestone.getProject().getId())
-                    .orElse(null);
-            if (project == null) return;
+   private void notifyContractorOfCompletion(Milestone milestone) {
+    try {
+        Project project = projectRepository.findById(milestone.getProject().getId())
+                .orElse(null);
+        if (project == null) return;
 
-            User contractor = userRepository.findById(project.getContractorId())
-                    .orElse(null);
-            if (contractor == null || contractor.getFcmToken() == null) return;
+        User contractor = userRepository.findById(project.getContractorId())
+                .orElse(null);
+        if (contractor == null || contractor.getFcmToken() == null) return;
 
-            pushNotificationService.send(
-                    contractor.getFcmToken(),
-                    "Milestone Completed ✅",
-                    "\"" + milestone.getTitle() + "\" has been marked complete.",
-                    Map.of(
-                            "type", "milestoneCompleted",
-                            "projectId", milestone.getProject().getId().toString(),
-                            "milestoneId", milestone.getId().toString()
-                    )
-            );
-        } catch (Exception e) {
-            // Notification send failures must never propagate —
-            // the business operation (milestone completion) already
-            // succeeded at this point.
-        }
+        String actionRoute = "/contractor-dash/project/" +
+                project.getId().toString();
+
+        pushNotificationService.sendAndPersist(
+                contractor.getFcmToken(),
+                contractor.getId(),
+                "Milestone Completed ✅",
+                "\"" + milestone.getTitle() + "\" has been marked complete.",
+                NotificationSeverity.SUCCESS,
+                "milestoneCompleted",
+                "View Project",
+                actionRoute,
+                Map.of("projectId", project.getId().toString(),
+                       "milestoneId", milestone.getId().toString())
+        );
+    } catch (Exception e) {
+        // Swallowed — notification never rolls back the business operation.
     }
+}
 }

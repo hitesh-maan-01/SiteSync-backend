@@ -1,8 +1,12 @@
 package com.sitesync.auth.controller;
 
 import com.sitesync.auth.dto.ApiResponse;
+import com.sitesync.auth.dto.UpdatePhoneRequest;
 import com.sitesync.auth.dto.UserResponse;
 import com.sitesync.auth.service.UserProfileService;
+
+import jakarta.validation.Valid;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -40,4 +44,15 @@ public class UserProfileController {
         UserResponse user = userProfileService.updateProfilePhoto(currentUserId(authentication), photo);
         return ResponseEntity.ok(ApiResponse.ok(user, "Profile photo updated."));
     }
+
+    // POST /api/v1/users/me/phone
+@PostMapping("/me/phone")
+public ResponseEntity<ApiResponse<UserResponse>> updatePhoneNumber(
+        @RequestBody @Valid UpdatePhoneRequest request,
+        Authentication authentication
+) {
+    UserResponse user = userProfileService.updatePhoneNumber(
+            currentUserId(authentication), request.phoneNumber);
+    return ResponseEntity.ok(ApiResponse.ok(user, "Phone number linked."));
+}
 }

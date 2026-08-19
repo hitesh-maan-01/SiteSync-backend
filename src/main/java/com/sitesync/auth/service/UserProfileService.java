@@ -56,4 +56,17 @@ public class UserProfileService {
         User saved = userRepository.save(user);
         return UserResponse.fromEntity(saved);
     }
+
+    @Transactional
+public UserResponse updatePhoneNumber(UUID userId, String phoneNumber) {
+    // Check uniqueness — phone_number has a unique constraint on users table
+    if (userRepository.existsByPhoneNumber(phoneNumber)) {
+        throw new IllegalArgumentException(
+            "This phone number is already linked to another account.");
+    }
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found."));
+    user.setPhoneNumber(phoneNumber);
+    return UserResponse.fromEntity(userRepository.save(user));
+}
 }
