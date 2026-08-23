@@ -1,5 +1,11 @@
 package com.sitesync.site.service;
 
+import com.sitesync.auth.entity.User;
+import com.sitesync.auth.repository.UserRepository;
+import com.sitesync.notification.entity.NotificationSeverity;
+import com.sitesync.notification.service.PushNotificationService;
+import com.sitesync.project.entity.Project;
+import com.sitesync.project.repository.ProjectRepository;
 import com.sitesync.project.service.ProjectService;
 import com.sitesync.site.dto.AttendanceResponse;
 import com.sitesync.site.entity.Attendance;
@@ -13,8 +19,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Each public method corresponds to a SiteRepository method on the
@@ -30,21 +38,30 @@ import java.util.stream.Collectors;
  * unique constraint on (worker_id, date) as a second line of defense
  * against race conditions (e.g. two rapid double-taps).
  */
+@Slf4j
 @Service
 public class AttendanceService {
 
-    private final AttendanceRepository attendanceRepository;
+        private final AttendanceRepository attendanceRepository;
     private final FileStorageService fileStorageService;
     private final ProjectService projectService;
+    private final ProjectRepository projectRepository;     // ADD
+    private final UserRepository userRepository;           // ADD
+    private final PushNotificationService pushNotificationService; // ADD
 
     public AttendanceService(
             AttendanceRepository attendanceRepository,
             FileStorageService fileStorageService,
-            ProjectService projectService
-    ) {
+            ProjectService projectService,
+            ProjectRepository projectRepository,
+            UserRepository userRepository,
+            PushNotificationService pushNotificationService) {
         this.attendanceRepository = attendanceRepository;
         this.fileStorageService = fileStorageService;
         this.projectService = projectService;
+        this.projectRepository = projectRepository;
+        this.userRepository = userRepository;
+        this.pushNotificationService = pushNotificationService;
     }
 
     /**
@@ -126,7 +143,47 @@ public class AttendanceService {
         attendance.setWithinGeofence(withinGeofence);
 
         Attendance saved = attendanceRepository.save(attendance);
+                // Notify contractor if check-in is outside the geofence —
+        // a "red flag" they need to be aware of immediately.
+        if (Boolean.FALSE.equals(withinGeofence)) {
+            notifyContractorRedFlag(saved, projectId, requesterId);
+        }
+
         return AttendanceResponse.fromEntity(saved);
+    }
+
+    private void notifyContractorRedFlag(
+            Attendance attendance, UUID projectId, UUID supervisorId) {
+        try {
+            Project project = projectRepository.findById(projectId)
+                    .orElse(null);
+            if (project == null) return;
+
+            User contractor = userRepository.findById(project.getContractorId())
+                    .orElse(null);
+            if (contractor == null || contractor.getFcmToken() == null) return;
+
+            String actionRoute =
+                    "/supervisor-dash/manual-attendance/" + projectId;
+
+            pushNotificationService.sendAndPersist(
+                    contractor.getFcmToken(),
+                    contractor.getId(),
+                    "Check-In Red Flag 🚩",
+                    attendance.getWorkerName()
+                            + " checked in outside the site boundary.",
+                    NotificationSeverity.CRITICAL,
+                    "checkInRedFlag",
+                    "View Attendance",
+                    actionRoute,
+                    Map.of(
+                            "projectId", projectId.toString(),
+                            "workerId", attendance.getWorkerId().toString()
+                    )
+            );
+        } catch (Exception e) {
+            log.warn("Failed to send red-flag notification: {}", e.getMessage());
+        }
     }
 
     public AttendanceResponse markAttendanceManual(

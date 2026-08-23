@@ -44,7 +44,9 @@ public class SecurityConfig {
                     "/api/auth/otp/verify",
                     "/api/auth/register",
                     "/api/auth/register/verify",
-                    "/api/auth/refresh"
+                    "/api/auth/refresh",
+                    "/api/auth/**",
+                    "/api/public/**"
                 ).permitAll()
                 .requestMatchers("/api/public/**").permitAll()
                 .anyRequest().authenticated()

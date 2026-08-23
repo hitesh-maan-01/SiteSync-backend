@@ -38,3 +38,4 @@ build/
 
 # Ignore Firebase Admin SDK private key
 sitesync-firebase-adminsdk.json
+.env

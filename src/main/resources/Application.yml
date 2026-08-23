@@ -42,16 +42,16 @@ spring:
       max-file-size: 15MB
       max-request-size: 15MB
 
+supabase:
+  storage: 
+    endpoint: ${SUPABASE_STORAGE_ENDPOINT}
+    region: us-east-1
+    access-key: ${SUPABASE_STORAGE_ACCESS_KEY}
+    secret-key: ${SUPABASE_STORAGE_SECRET_KEY}
+    bucket: ${SUPABASE_STORAGE_BUCKET:sitesync-media}
+    public-base-url: ${SUPABASE_STORAGE_PUBLIC_BASE_URL}
+
 app:
-  storage:
-    upload-dir: ./uploads
-    # Must match wherever this Spring Boot instance is actually reachable
-    # from the Flutter app — same host:port as app_config.dart's
-    # _devBaseUrl for local dev (http://10.0.2.2:8080 on the Android
-    # emulator's side, but the SERVER's own view of itself is just
-    # localhost:8080 — set this to whatever the server should embed in
-    # photo URLs it hands back).
-    public-base-url: http://localhost:8080
   mail:
     from: ${GMAIL_ADDRESS}
   jwt:
@@ -61,7 +61,6 @@ app:
   otp:
     expiry-minutes: 10
     length: 6
-
   firebase:
     service-account-path: sitesync-firebase-adminsdk.json
 
@@ -89,7 +88,7 @@ app:
 # running the app, e.g.:
 #
 #   $env:SUPABASE_DB_HOST="aws-0-<region>.pooler.supabase.com"
-#   $env:SUPABASE_DB_USER="postgres.tbeayjpuutjfneqnmmmm"
+#   $env:SUPABASE_DB_USER="postgres.xxxxx......"
 #   $env:SUPABASE_DB_PASSWORD="your-password"
 #   $env:JWT_SECRET="your-jwt-secret"
 #   $env:GMAIL_ADDRESS="your-gmail"

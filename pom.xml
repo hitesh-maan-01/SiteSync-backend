@@ -49,6 +49,13 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!--AWS S3 SDK Dependency-->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.25.60</version>
+        </dependency>
+
         <!-- 3. JWT Dependencies (Added for Auth) -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
@@ -91,6 +98,12 @@
     <groupId>org.projectlombok</groupId>
     <artifactId>lombok</artifactId>
     <optional>true</optional>
+</dependency>
+
+<dependency>
+    <groupId>me.paulschwarz</groupId>
+    <artifactId>spring-dotenv</artifactId>
+    <version>4.0.0</version>
 </dependency>
     </dependencies>
 

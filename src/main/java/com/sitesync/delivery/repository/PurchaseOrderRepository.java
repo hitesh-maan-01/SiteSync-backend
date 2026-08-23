@@ -12,5 +12,6 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, UU
     List<PurchaseOrder> findByProjectIdOrderByExpectedAtDesc(UUID projectId);
 
     /** Used by OverdueDeliveryScheduler - every still-pending order whose expected time has already passed. */
-    List<PurchaseOrder> findByStatusAndExpectedAtBefore(PurchaseOrderStatus status, Instant cutoff);
+    List<PurchaseOrder> findByStatusAndExpectedAtBefore(PurchaseOrderStatus status, Instant time);
+    
 }
