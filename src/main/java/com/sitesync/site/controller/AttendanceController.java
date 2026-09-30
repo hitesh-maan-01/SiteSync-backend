@@ -3,6 +3,8 @@ package com.sitesync.site.controller;
 import com.sitesync.auth.dto.ApiResponse;
 import com.sitesync.site.dto.AttendanceRequests.ManualAttendanceRequest;
 import com.sitesync.site.dto.AttendanceResponse;
+import com.sitesync.site.dto.KioskScanRequest;
+import com.sitesync.site.dto.KioskScanResponse;
 import com.sitesync.site.service.AttendanceService;
 import jakarta.validation.Valid;
 
@@ -121,5 +123,23 @@ public class AttendanceController {
                 request.manualReason
         );
         return ResponseEntity.ok(ApiResponse.ok(response, "Attendance marked."));
+    }
+
+        // POST /api/v1/projects/{projectId}/attendance/kiosk-scan
+    @PostMapping("/project/{projectId}/kiosk-scan")
+    public ResponseEntity<ApiResponse<KioskScanResponse>> kioskScan(
+            @PathVariable String projectId,
+            @Valid @RequestBody KioskScanRequest request,
+            Authentication authentication) {
+
+        KioskScanResponse response = attendanceService.processKioskScan(
+                UUID.fromString(projectId),
+                currentUserId(authentication),
+                request);
+
+        return ResponseEntity.ok(ApiResponse.ok(response,
+                response.alreadyCheckedIn
+                        ? "Worker already checked in today."
+                        : "Check-in recorded."));
     }
 }

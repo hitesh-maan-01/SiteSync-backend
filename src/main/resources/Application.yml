@@ -57,7 +57,7 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     access-token-expiry-minutes: 15
-    refresh-token-expiry-days: 30
+    refresh-token-expiry-days: 45
   otp:
     expiry-minutes: 10
     length: 6

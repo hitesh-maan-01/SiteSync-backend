@@ -8,11 +8,17 @@ import com.sitesync.project.entity.Project;
 import com.sitesync.project.repository.ProjectRepository;
 import com.sitesync.project.service.ProjectService;
 import com.sitesync.site.dto.AttendanceResponse;
+import com.sitesync.site.dto.KioskScanRequest;
+import com.sitesync.site.dto.KioskScanResponse;
 import com.sitesync.site.entity.Attendance;
 import com.sitesync.site.entity.AttendanceMethod;
 import com.sitesync.site.entity.AttendanceStatus;
+import com.sitesync.site.entity.Worker;
 import com.sitesync.site.repository.AttendanceRepository;
+import com.sitesync.site.repository.WorkerRepository;
+
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
@@ -47,7 +53,8 @@ public class AttendanceService {
     private final ProjectService projectService;
     private final ProjectRepository projectRepository;     // ADD
     private final UserRepository userRepository;           // ADD
-    private final PushNotificationService pushNotificationService; // ADD
+    private final PushNotificationService pushNotificationService;
+    private final WorkerRepository workerRepository; // ADD
 
     public AttendanceService(
             AttendanceRepository attendanceRepository,
@@ -55,13 +62,15 @@ public class AttendanceService {
             ProjectService projectService,
             ProjectRepository projectRepository,
             UserRepository userRepository,
-            PushNotificationService pushNotificationService) {
+            PushNotificationService pushNotificationService,
+        WorkerRepository workerRepository) {
         this.attendanceRepository = attendanceRepository;
         this.fileStorageService = fileStorageService;
         this.projectService = projectService;
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.pushNotificationService = pushNotificationService;
+        this.workerRepository = workerRepository;
     }
 
     /**
@@ -230,5 +239,63 @@ public class AttendanceService {
                     workerName + " has already been marked for attendance today."
             );
         }
+    }
+
+        /**
+     * Processes a kiosk QR scan. Idempotent by design:
+     * - If worker already checked in today → returns success without
+     *   inserting a duplicate row. HTTP 200 so the kiosk UI shows a
+     *   checkmark (the worker is in, which is all that matters).
+     * - If worker not found on this project → throws IllegalArgumentException
+     *   (→ 400) so the kiosk can show a "Badge not recognized" error.
+     *
+     * No photo, no GPS — this is a badge-tap, not a full check-in.
+     * Method is stored as KIOSK_QR for clean reporting separation from
+     * MANUAL overrides.
+     */
+    @Transactional
+    public KioskScanResponse processKioskScan(
+            UUID projectId, UUID supervisorId, KioskScanRequest request) {
+
+        UUID workerId = UUID.fromString(request.workerId);
+
+        // Verify worker belongs to this project — prevents badge reuse
+        // across sites (a worker from Site A can't scan in at Site B).
+        Worker worker = workerRepository
+                .findByProjectIdOrderByOnboardedAtAsc(projectId)
+                .stream()
+                .filter(w -> w.getId().equals(workerId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Worker badge not recognized for this project. "
+                        + "Ensure the worker is enrolled at this site."));
+
+        LocalDate today = LocalDate.now(ZoneId.systemDefault());
+
+        // Idempotency check — return success without inserting if already in.
+        if (attendanceRepository.existsByWorkerIdAndDate(workerId, today)) {
+            return KioskScanResponse.alreadyCheckedIn(worker.getName());
+        }
+
+        // Create the attendance record
+        Instant now = Instant.now();
+        Attendance attendance = new Attendance();
+        attendance.setProjectId(projectId);
+        attendance.setWorkerId(workerId);
+        attendance.setWorkerName(worker.getName());
+        attendance.setStatus(AttendanceStatus.PRESENT);
+        attendance.setMethod(AttendanceMethod.KIOSK_QR);
+        attendance.setTimestamp(now);
+        attendance.setDate(today);
+        attendance.setMarkedByUserId(supervisorId);
+        // No photo, no GPS — kiosk badges are physical, not location-validated.
+        // withinGeofence left null deliberately (not applicable for kiosk).
+
+        Attendance saved = attendanceRepository.save(attendance);
+
+        return KioskScanResponse.checkedIn(
+                worker.getName(),
+                saved.getId().toString(),
+                saved.getTimestamp().toString());
     }
 }
