@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: ${PORT:8080}          # ← CHANGED: Render injects PORT dynamically
 
 spring:
   application:
@@ -11,8 +11,11 @@ spring:
     password: ${SUPABASE_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 3    # ← CHANGED: Render free tier has limited DB connections
+      minimum-idle: 1         # ← CHANGED: was 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
@@ -36,14 +39,11 @@ spring:
 
   servlet:
     multipart:
-      # Camera photos can easily exceed Spring's default 1MB limit —
-      # sized generously since image_picker on the Flutter side doesn't
-      # compress by default.
       max-file-size: 15MB
       max-request-size: 15MB
 
 supabase:
-  storage: 
+  storage:
     endpoint: ${SUPABASE_STORAGE_ENDPOINT}
     region: us-east-1
     access-key: ${SUPABASE_STORAGE_ACCESS_KEY}
@@ -62,7 +62,17 @@ app:
     expiry-minutes: 10
     length: 6
   firebase:
-    service-account-path: sitesync-firebase-adminsdk.json
+    service-account-path: sitesync-firebase-adminsdk.json  # ← see FirebaseConfig.java note below
+
+# ── Actuator (Render health check + UptimeRobot) ─────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health     # ← ADDED
+  endpoint:
+    health:
+      show-details: never   # ← ADDED
 
 # ---------------------------------------------------------------------
 # Environment variables required before this application will start:
