@@ -24,6 +24,7 @@ public class ProjectRequests {
         public String startDate;
         public String expectedEndDate;
         public String assignedSupervisorId;
+        public List<String> supervisorIds;
 
         // Milestones defined at project creation — sequenceOrder is
         // derived from list index in ProjectService, never sent by client.

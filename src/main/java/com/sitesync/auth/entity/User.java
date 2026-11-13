@@ -40,8 +40,7 @@ public class User {
     @Column(name = "company_name")
     private String companyName;
 
-    @Column(name = "assigned_project_id")
-    private UUID assignedProjectId;
+   
 
     @Column(name = "fcm_token")
     private String fcmToken;
@@ -88,9 +87,6 @@ public class User {
 
     public String getCompanyName() { return companyName; }
     public void setCompanyName(String companyName) { this.companyName = companyName; }
-
-    public UUID getAssignedProjectId() { return assignedProjectId; }
-    public void setAssignedProjectId(UUID assignedProjectId) { this.assignedProjectId = assignedProjectId; }
 
     public String getFcmToken() { return fcmToken; }
     public void setFcmToken(String fcmToken) { this.fcmToken = fcmToken; }

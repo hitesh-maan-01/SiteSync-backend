@@ -1,14 +1,11 @@
 package com.sitesync.project.controller;
 
 import com.sitesync.auth.dto.ApiResponse;
-import com.sitesync.project.dto.ProjectOverviewResponse;
-import com.sitesync.project.service.ProjectOverviewService;
-import com.sitesync.project.service.ProjectService;
-import com.sitesync.project.dto.ProjectRequests.CreateProjectRequest;
-import com.sitesync.project.dto.ProjectRequests.UpdateProjectRequest;
+import com.sitesync.project.dto.ProjectRequests.*;
 import com.sitesync.project.dto.ProjectResponse;
 import com.sitesync.project.service.ProjectService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -16,71 +13,86 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Every mapping here corresponds exactly to a constant in
- * api_endpoints.dart, checked directly against project_repository.dart.
- * Note GET and POST both live at /api/projects - list vs create is
- * differentiated purely by HTTP method, matching how Flutter calls it.
- */
 @RestController
 @RequestMapping("/api/projects")
+@RequiredArgsConstructor
 public class ProjectController {
 
-   private final ProjectService projectService;
-    private final ProjectOverviewService projectOverviewService;
-    public ProjectController(ProjectService projectService, ProjectOverviewService projectOverviewService) {
-        this.projectService = projectService;
-        this.projectOverviewService = projectOverviewService;
-    }
+    private final ProjectService projectService;
 
-
-    private UUID currentUserId(Authentication authentication) {
-        return (UUID) authentication.getPrincipal();
+    private UUID currentUserId(Authentication auth) {
+        return (UUID) auth.getPrincipal();
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProjectResponse>>> getProjects(Authentication authentication) {
-        List<ProjectResponse> projects = projectService.getProjectsForContractor(currentUserId(authentication));
-        return ResponseEntity.ok(ApiResponse.ok(projects));
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProjectResponse>> getProjectById(
-            @PathVariable String id,
-            Authentication authentication
-    ) {
-        ProjectResponse project = projectService.getProjectById(UUID.fromString(id), currentUserId(authentication));
-        return ResponseEntity.ok(ApiResponse.ok(project));
+    public ResponseEntity<ApiResponse<List<ProjectResponse>>> getProjects(
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.getProjectsForContractor(currentUserId(auth))));
     }
 
     @PostMapping
     public ResponseEntity<ApiResponse<ProjectResponse>> createProject(
             @Valid @RequestBody CreateProjectRequest request,
-            Authentication authentication
-    ) {
-        ProjectResponse project = projectService.createProject(currentUserId(authentication), request);
-        return ResponseEntity.ok(ApiResponse.ok(project, "Project created."));
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.createProject(currentUserId(auth), request)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ProjectResponse>> getProject(
+            @PathVariable String id, Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.getProjectById(
+                        UUID.fromString(id), currentUserId(auth))));
     }
 
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
             @PathVariable String id,
             @RequestBody UpdateProjectRequest request,
-            Authentication authentication
-    ) {
-        ProjectResponse project = projectService.updateProject(
-                UUID.fromString(id), currentUserId(authentication), request);
-        return ResponseEntity.ok(ApiResponse.ok(project, "Project updated."));
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.updateProject(
+                        UUID.fromString(id), currentUserId(auth), request)));
     }
 
-    // GET /api/projects/{id}/overview
-    @GetMapping("/{id}/overview")
-    public ResponseEntity<ApiResponse<ProjectOverviewResponse>> getOverview(
+    // ── Supervisor assignment endpoints (M:N) ─────────────────────────────────
+
+    // POST /api/projects/{id}/supervisors
+    // Body: { "supervisorId": "uuid" }
+    @PostMapping("/{id}/supervisors")
+    public ResponseEntity<ApiResponse<ProjectResponse>> addSupervisor(
             @PathVariable String id,
-            Authentication authentication
-    ) {
-        ProjectOverviewResponse overview = projectOverviewService.getOverview(
-                UUID.fromString(id), currentUserId(authentication));
-        return ResponseEntity.ok(ApiResponse.ok(overview));
+            @RequestBody java.util.Map<String, String> body,
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.addSupervisor(
+                        UUID.fromString(id),
+                        currentUserId(auth),
+                        UUID.fromString(body.get("supervisorId"))),
+                "Supervisor assigned."));
+    }
+
+    // DELETE /api/projects/{id}/supervisors/{supervisorId}
+    @DeleteMapping("/{id}/supervisors/{supervisorId}")
+    public ResponseEntity<ApiResponse<ProjectResponse>> removeSupervisor(
+            @PathVariable String id,
+            @PathVariable String supervisorId,
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.removeSupervisor(
+                        UUID.fromString(id),
+                        currentUserId(auth),
+                        UUID.fromString(supervisorId)),
+                "Supervisor removed."));
+    }
+
+    // GET /api/projects/my-sites (supervisor calls this)
+    @GetMapping("/my-sites")
+    public ResponseEntity<ApiResponse<List<ProjectResponse>>> getMySites(
+            Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                projectService.getProjectsForSupervisor(currentUserId(auth))));
     }
 }

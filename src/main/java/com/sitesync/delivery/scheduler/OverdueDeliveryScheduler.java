@@ -1,120 +1,134 @@
 package com.sitesync.delivery.scheduler;
 
-import com.sitesync.auth.entity.User;
-import com.sitesync.auth.repository.UserRepository;
-import com.sitesync.delivery.entity.PurchaseOrder;
-import com.sitesync.delivery.entity.PurchaseOrderStatus;
-import com.sitesync.delivery.repository.PurchaseOrderRepository;
 import com.sitesync.notification.entity.NotificationSeverity;
 import com.sitesync.notification.service.PushNotificationService;
+import com.sitesync.delivery.entity.DeliverySchedule;
 import com.sitesync.project.entity.Project;
+import com.sitesync.project.entity.ProjectSupervisor;
+import com.sitesync.delivery.repository.DeliveryScheduleRepository;
 import com.sitesync.project.repository.ProjectRepository;
+import com.sitesync.project.repository.ProjectSupervisorRepository;
+import com.sitesync.auth.repository.UserRepository; // adjust package if different
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.UUID;
 
-/**
- * Runs every 15 minutes to flip overdue PENDING purchase orders to LATE
- * and notify the assigned supervisor so they can follow up with the vendor.
- *
- * @Scheduled requires @EnableScheduling on a @Configuration class or
- * the main @SpringBootApplication class — add it if not already present.
- */
 @Component
 public class OverdueDeliveryScheduler {
 
-    private static final Logger log =
-            LoggerFactory.getLogger(OverdueDeliveryScheduler.class);
+    private static final Logger log = LoggerFactory.getLogger(OverdueDeliveryScheduler.class);
 
-    private final PurchaseOrderRepository purchaseOrderRepository;
-    private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
-    private final PushNotificationService pushNotificationService;
+    private final DeliveryScheduleRepository deliveryRepo;
+    private final ProjectRepository projectRepo;
+    private final ProjectSupervisorRepository supervisorRepo;
+    private final UserRepository userRepo;
+    private final PushNotificationService pushService;
 
     public OverdueDeliveryScheduler(
-            PurchaseOrderRepository purchaseOrderRepository,
-            ProjectRepository projectRepository,
-            UserRepository userRepository,
-            PushNotificationService pushNotificationService) {
-        this.purchaseOrderRepository = purchaseOrderRepository;
-        this.projectRepository = projectRepository;
-        this.userRepository = userRepository;
-        this.pushNotificationService = pushNotificationService;
+            DeliveryScheduleRepository deliveryRepo,
+            ProjectRepository projectRepo,
+            ProjectSupervisorRepository supervisorRepo,
+            UserRepository userRepo,
+            PushNotificationService pushService) {
+        this.deliveryRepo   = deliveryRepo;
+        this.projectRepo    = projectRepo;
+        this.supervisorRepo = supervisorRepo;
+        this.userRepo       = userRepo;
+        this.pushService    = pushService;
     }
 
-    /**
-     * Runs every 15 minutes. Finds all PENDING orders whose expectedAt
-     * has passed, marks them LATE, and notifies the supervisor assigned
-     * to that project.
-     *
-     * fixedDelay (not fixedRate) ensures the next run only starts after
-     * the previous one fully completes — avoids overlap if the DB query
-     * is slow under load.
-     */
-    @Scheduled(fixedDelay = 15 * 60 * 1000)
-    @Transactional
-    public void markOverdueDeliveries() {
-        List<PurchaseOrder> overdue =
-                purchaseOrderRepository.findByStatusAndExpectedAtBefore(
-                        PurchaseOrderStatus.PENDING, Instant.now());
+    @Scheduled(cron = "0 0 8 * * *", zone = "Asia/Kolkata")
+    public void checkOverdueDeliveries() {
+        log.info("[OverdueDeliveryScheduler] Starting...");
 
-        if (overdue.isEmpty()) return;
+        LocalDate today = LocalDate.now();
 
-        log.info("Marking {} purchase order(s) as LATE", overdue.size());
+        List<DeliverySchedule> overdueList =
+                deliveryRepo.findByStatusAndExpectedDateBefore(
+                        DeliverySchedule.Status.PENDING, today);
 
-        for (PurchaseOrder order : overdue) {
-            order.setStatus(PurchaseOrderStatus.LATE);
-            purchaseOrderRepository.save(order);
-
-            notifySupervisor(order);
+        if (overdueList.isEmpty()) {
+            log.info("[OverdueDeliveryScheduler] No overdue deliveries.");
+            return;
         }
-    }
 
-    private void notifySupervisor(PurchaseOrder order) {
-        try {
-            Optional<Project> projectOpt =
-                    projectRepository.findById(order.getProjectId());
-            if (projectOpt.isEmpty()) return;
+        log.info("[OverdueDeliveryScheduler] {} overdue deliveries found.", overdueList.size());
 
-            Project project = projectOpt.get();
-            if (project.getAssignedSupervisorId() == null) return;
+        for (DeliverySchedule delivery : overdueList) {
+            try {
+                // 1. Get project
+                Project project = projectRepo.findById(delivery.getProjectId())
+                        .orElse(null);
+                if (project == null) {
+                    log.warn("Project not found for delivery={}", delivery.getId());
+                    continue;
+                }
 
-            Optional<User> supervisorOpt =
-                    userRepository.findById(project.getAssignedSupervisorId());
-            if (supervisorOpt.isEmpty()) return;
+                // 2. Get all supervisors for this project (M:N via EmbeddedId)
+                List<ProjectSupervisor> assignments =
+                        supervisorRepo.findByIdProjectId(project.getId());
 
-            User supervisor = supervisorOpt.get();
-            if (supervisor.getFcmToken() == null) return;
+                if (assignments.isEmpty()) {
+                    log.warn("No supervisors assigned to project={}", project.getId());
+                    continue;
+                }
 
-            String actionRoute =
-                    "/supervisor-dash/deliveries/" + order.getProjectId();
+                String title = "⚠️ Overdue Delivery";
+                String body  = String.format(
+                        "Delivery of '%s' for project '%s' was due on %s and is still pending.",
+                        delivery.getMaterialName(),
+                        project.getName(),
+                        delivery.getExpectedDate()
+                );
 
-            pushNotificationService.sendAndPersist(
-                    supervisor.getFcmToken(),
-                    supervisor.getId(),
-                    "Delivery Overdue ⚠️",
-                    "\"" + order.getMaterialName() + "\" was expected and"
-                            + " hasn't arrived. Tap to follow up.",
-                    NotificationSeverity.WARNING,
-                    "materialDelay",
-                    "View Deliveries",
-                    actionRoute,
-                    Map.of(
-                            "projectId", order.getProjectId().toString(),
-                            "purchaseOrderId", order.getId().toString()
-                    )
-            );
-        } catch (Exception e) {
-            // Non-fatal — scheduler must never fail due to a push error.
-            log.warn("Failed to notify supervisor for order {}: {}",
-                    order.getId(), e.getMessage());
+                // 3. Notify each supervisor
+                for (ProjectSupervisor assignment : assignments) {
+                    UUID supervisorId = assignment.getUserId();
+                    try {
+                        // Fetch FCM token from user record
+                        userRepo.findById(supervisorId).ifPresent(user -> {
+                            String fcmToken = user.getFcmToken(); // adjust getter if different
+                            if (fcmToken == null || fcmToken.isBlank()) {
+                                log.debug("No FCM token for supervisor={}", supervisorId);
+                                return;
+                            }
+                            pushService.sendAndPersist(
+                                    fcmToken,
+                                    supervisorId,
+                                    title,
+                                    body,
+                                    NotificationSeverity.WARNING,
+                                    "OVERDUE_DELIVERY",
+                                    "View Deliveries",
+                                    "/projects/" + project.getId() + "/deliveries",
+                                    Map.of(
+                                        "projectId",  project.getId().toString(),
+                                        "deliveryId", delivery.getId().toString()
+                                    )
+                            );
+                            log.info("Notified supervisor={} for delivery={}",
+                                    supervisorId, delivery.getId());
+                        });
+                    } catch (Exception e) {
+                        log.error("Failed to notify supervisor={}: {}", supervisorId, e.getMessage());
+                    }
+                }
+
+                // 4. Mark OVERDUE so scheduler doesn't re-fire tomorrow
+                delivery.setStatus(DeliverySchedule.Status.OVERDUE);
+                deliveryRepo.save(delivery);
+
+            } catch (Exception e) {
+                log.error("Error processing delivery={}: {}", delivery.getId(), e.getMessage());
+            }
         }
+
+        log.info("[OverdueDeliveryScheduler] Done.");
     }
 }

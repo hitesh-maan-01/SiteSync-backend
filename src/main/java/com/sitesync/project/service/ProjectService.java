@@ -1,67 +1,86 @@
 package com.sitesync.project.service;
 
 import com.sitesync.auth.entity.User;
-import com.sitesync.auth.entity.UserRole;
 import com.sitesync.auth.repository.UserRepository;
 import com.sitesync.milestone.dto.MilestoneCreateDTO;
 import com.sitesync.milestone.entity.Milestone;
 import com.sitesync.milestone.entity.MilestoneStatus;
 import com.sitesync.milestone.repository.MilestoneRepository;
-import com.sitesync.project.dto.ProjectRequests.CreateProjectRequest;
-import com.sitesync.project.dto.ProjectRequests.UpdateProjectRequest;
+import com.sitesync.notification.entity.NotificationSeverity;
+import com.sitesync.notification.service.PushNotificationService;
+import com.sitesync.project.dto.ProjectRequests.*;
 import com.sitesync.project.dto.ProjectResponse;
 import com.sitesync.project.entity.Project;
 import com.sitesync.project.entity.ProjectStatus;
+import com.sitesync.project.entity.ProjectSupervisor;
 import com.sitesync.project.repository.ProjectRepository;
+import com.sitesync.project.repository.ProjectSupervisorRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final MilestoneRepository milestoneRepository;
+    private final ProjectSupervisorRepository projectSupervisorRepository;
     private final UserRepository userRepository;
+    private final PushNotificationService pushNotificationService;
 
-    public ProjectService(
-            ProjectRepository projectRepository,
-            MilestoneRepository milestoneRepository,
-       UserRepository userRepository) {
-        this.projectRepository = projectRepository;
-        this.milestoneRepository = milestoneRepository;
-           this.userRepository = userRepository;
-    }
+    // ── Query helpers ─────────────────────────────────────────────────────────
 
     public List<ProjectResponse> getProjectsForContractor(UUID contractorId) {
-        return projectRepository.findByContractorIdOrderByCreatedAtDesc(contractorId)
+        return projectRepository
+                .findByContractorIdOrderByCreatedAtDesc(contractorId)
                 .stream()
-                .map(ProjectResponse::fromEntity)
+                .map(p -> ProjectResponse.fromEntity(p, supervisorIds(p.getId())))
                 .collect(Collectors.toList());
     }
 
     public ProjectResponse getProjectById(UUID projectId, UUID requesterId) {
         Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new IllegalArgumentException("Project not found."));
-        if (!project.getContractorId().equals(requesterId) &&
-                !requesterId.equals(project.getAssignedSupervisorId())) {
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Project not found."));
+
+        boolean isContractor = project.getContractorId().equals(requesterId);
+        boolean isSupervisor = projectSupervisorRepository
+                .existsByIdProjectIdAndIdUserId(projectId, requesterId);
+
+        if (!isContractor && !isSupervisor) {
             throw new IllegalArgumentException("Access denied.");
         }
-        return ProjectResponse.fromEntity(project);
+
+        return ProjectResponse.fromEntity(project, supervisorIds(projectId));
     }
 
     /**
-     * Creates the project and — within the same @Transactional — saves
-     * all submitted milestones with PENDING status, 0% progress, and
-     * sequenceOrder derived from their list index (1-based) so the
-     * client never needs to manage ordering explicitly.
+     * Returns all projects a supervisor is assigned to.
+     * Used by the new SupervisorDashboard project-picker.
      */
+    public List<ProjectResponse> getProjectsForSupervisor(UUID supervisorId) {
+        List<UUID> projectIds = projectSupervisorRepository
+                .findProjectIdsByUserId(supervisorId);
+
+        return projectIds.stream()
+                .map(id -> projectRepository.findById(id))
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .map(p -> ProjectResponse.fromEntity(p, supervisorIds(p.getId())))
+                .collect(Collectors.toList());
+    }
+
+    // ── Create ────────────────────────────────────────────────────────────────
+
     @Transactional
-    public ProjectResponse createProject(UUID contractorId, CreateProjectRequest request) {
+    public ProjectResponse createProject(UUID contractorId,
+            CreateProjectRequest request) {
+
         Project project = new Project();
         project.setContractorId(contractorId);
         project.setName(request.name);
@@ -79,32 +98,28 @@ public class ProjectService {
         if (request.expectedEndDate != null && !request.expectedEndDate.isBlank()) {
             project.setExpectedEndDate(LocalDate.parse(request.expectedEndDate));
         }
-        if (request.assignedSupervisorId != null && !request.assignedSupervisorId.isBlank()) {
-            project.setAssignedSupervisorId(UUID.fromString(request.assignedSupervisorId));
-        }
 
         Project saved = projectRepository.save(project);
 
-        // Sync users.assigned_project_id at creation time too
-if (request.assignedSupervisorId != null &&
-        !request.assignedSupervisorId.isBlank()) {
-    UUID supervisorId = UUID.fromString(request.assignedSupervisorId);
-    userRepository.findById(supervisorId).ifPresent(supervisor -> {
-        supervisor.setAssignedProjectId(saved.getId());
-        userRepository.save(supervisor);
-    });
-}
+        // Assign supervisors (M:N — can be multiple at creation time)
+        if (request.supervisorIds != null) {
+            for (String supId : request.supervisorIds) {
+                if (supId != null && !supId.isBlank()) {
+                    projectSupervisorRepository.save(
+                            new ProjectSupervisor(
+                                    saved.getId(),
+                                    UUID.fromString(supId),
+                                    contractorId));
+                }
+            }
+        }
 
-        // Save milestones in the same transaction — sequenceOrder is
-        // 1-based index so the list order from the client is preserved.
+        // Save initial milestones
         if (request.milestones != null) {
             for (int i = 0; i < request.milestones.size(); i++) {
                 MilestoneCreateDTO dto = request.milestones.get(i);
                 Milestone milestone = new Milestone();
-                
-                // ✅ FIX APPLIED HERE: Passing the entire 'saved' project object
-                milestone.setProject(saved); 
-                
+                milestone.setProject(saved);
                 milestone.setTitle(dto.title);
                 milestone.setStatus(MilestoneStatus.PENDING);
                 milestone.setProgressPercent(0.0);
@@ -116,64 +131,125 @@ if (request.assignedSupervisorId != null &&
             }
         }
 
-        return ProjectResponse.fromEntity(saved);
+        return ProjectResponse.fromEntity(saved,
+                supervisorIds(saved.getId()));
     }
 
-   @Transactional
-public ProjectResponse updateProject(
-        UUID projectId, UUID requesterId, UpdateProjectRequest request) {
+    // ── Update ────────────────────────────────────────────────────────────────
 
-    Project project = projectRepository.findById(projectId)
-            .orElseThrow(() -> new IllegalArgumentException("Project not found."));
+    @Transactional
+    public ProjectResponse updateProject(UUID projectId, UUID requesterId,
+            UpdateProjectRequest request) {
 
-    if (!project.getContractorId().equals(requesterId)) {
-        throw new IllegalArgumentException(
-                "Only the contractor can update this project.");
-    }
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Project not found."));
 
-    if (request.status != null) {
-        project.setStatus(ProjectStatus.valueOf(request.status.toUpperCase()));
-    }
-    if (request.progressPercent != null) {
-        project.setProgressPercent(request.progressPercent);
-    }
-
-    // Supervisor assignment — must stay in sync across BOTH tables.
-    // projects.assigned_supervisor_id and users.assigned_project_id
-    // are two sides of the same relationship; writing only one causes
-    // SupervisorDashboard to show "No project assigned" even after
-    // assignment, because it reads from users.assigned_project_id.
-    if (request.assignedSupervisorId != null) {
-        UUID newSupervisorId = UUID.fromString(request.assignedSupervisorId);
-
-        // 1. Unlink previous supervisor (if any) so their
-        //    assigned_project_id is cleared when reassigned.
-        UUID previousSupervisorId = project.getAssignedSupervisorId();
-        if (previousSupervisorId != null &&
-                !previousSupervisorId.equals(newSupervisorId)) {
-            userRepository.findById(previousSupervisorId).ifPresent(prev -> {
-                prev.setAssignedProjectId(null);
-                userRepository.save(prev);
-            });
-        }
-
-        // 2. Set project's supervisor reference
-        project.setAssignedSupervisorId(newSupervisorId);
-
-        // 3. Set supervisor's project reference — this is the missing write
-        User supervisor = userRepository.findById(newSupervisorId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Supervisor not found: " + newSupervisorId));
-
-        if (supervisor.getRole() != UserRole.SUPERVISOR) {
+        if (!project.getContractorId().equals(requesterId)) {
             throw new IllegalArgumentException(
-                    "User is not a supervisor.");
+                    "Only the contractor can update this project.");
         }
 
-        supervisor.setAssignedProjectId(projectId);
-        userRepository.save(supervisor);
+        if (request.status != null) {
+            project.setStatus(
+                    ProjectStatus.valueOf(request.status.toUpperCase()));
+        }
+        if (request.progressPercent != null) {
+            project.setProgressPercent(request.progressPercent);
+        }
+
+        return ProjectResponse.fromEntity(
+                projectRepository.save(project),
+                supervisorIds(projectId));
     }
 
-    return ProjectResponse.fromEntity(projectRepository.save(project));
-}
+    // ── Supervisor assignment (M:N) ───────────────────────────────────────────
+
+    /**
+     * Adds a supervisor to a project. Idempotent — adding the same
+     * supervisor twice is a no-op (join table has a composite PK).
+     */
+    @Transactional
+    public ProjectResponse addSupervisor(UUID projectId, UUID contractorId,
+            UUID supervisorId) {
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Project not found."));
+
+        if (!project.getContractorId().equals(contractorId)) {
+            throw new IllegalArgumentException("Access denied.");
+        }
+
+        User supervisor = userRepository.findById(supervisorId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Supervisor not found."));
+
+        if (!com.sitesync.auth.entity.UserRole.SUPERVISOR
+                .equals(supervisor.getRole())) {
+            throw new IllegalArgumentException("User is not a supervisor.");
+        }
+
+        // Idempotent — save only if not already assigned
+        if (!projectSupervisorRepository.existsByIdProjectIdAndIdUserId(
+                projectId, supervisorId)) {
+            projectSupervisorRepository.save(
+                    new ProjectSupervisor(projectId, supervisorId, contractorId));
+        }
+
+        // Notify the newly assigned supervisor
+        notifySupervisorAssigned(supervisor, project);
+
+        return ProjectResponse.fromEntity(project, supervisorIds(projectId));
+    }
+
+    /**
+     * Removes a supervisor from a project. Safe to call if not assigned.
+     */
+    @Transactional
+    public ProjectResponse removeSupervisor(UUID projectId, UUID contractorId,
+            UUID supervisorId) {
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Project not found."));
+
+        if (!project.getContractorId().equals(contractorId)) {
+            throw new IllegalArgumentException("Access denied.");
+        }
+
+        projectSupervisorRepository
+                .deleteByIdProjectIdAndIdUserId(projectId, supervisorId);
+
+        return ProjectResponse.fromEntity(project, supervisorIds(projectId));
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private List<String> supervisorIds(UUID projectId) {
+        return projectSupervisorRepository
+                .findByIdProjectId(projectId)
+                .stream()
+                .map(ps -> ps.getId().getUserId().toString())
+                .collect(Collectors.toList());
+    }
+
+    private void notifySupervisorAssigned(User supervisor, Project project) {
+        try {
+            if (supervisor.getFcmToken() == null) return;
+            pushNotificationService.sendAndPersist(
+                    supervisor.getFcmToken(),
+                    supervisor.getId(),
+                    "New Site Assignment 🏗️",
+                    "You have been assigned to \"" + project.getName() + "\".",
+                    NotificationSeverity.INFO,
+                    "siteAssigned",
+                    "View Site",
+                    "/supervisor-dash",
+                    Map.of("projectId", project.getId().toString())
+            );
+        } catch (Exception e) {
+            // Non-fatal
+        }
+    }
 }

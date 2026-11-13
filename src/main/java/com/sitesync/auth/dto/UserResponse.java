@@ -10,7 +10,6 @@ public class UserResponse {
     public String role;
     public String profilePhotoUrl;
     public String companyName;
-    public String assignedProjectId;
     public boolean emailVerified;
     public String createdAt;
 
@@ -23,8 +22,6 @@ public class UserResponse {
         dto.role = user.getRole().toWireValue();
         dto.profilePhotoUrl = user.getProfilePhotoUrl();
         dto.companyName = user.getCompanyName();
-        dto.assignedProjectId = user.getAssignedProjectId() != null
-                ? user.getAssignedProjectId().toString() : null;
         dto.emailVerified = user.isEmailVerified();
         dto.createdAt = user.getCreatedAt().toString();
         return dto;

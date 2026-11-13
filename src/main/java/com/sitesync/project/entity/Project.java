@@ -42,8 +42,7 @@ public class Project {
     @Column(name = "progress_percent")
     private Double progressPercent;
 
-    @Column(name = "assigned_supervisor_id")
-    private UUID assignedSupervisorId;
+    
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -92,8 +91,6 @@ public class Project {
     public Double getProgressPercent() { return progressPercent; }
     public void setProgressPercent(Double progressPercent) { this.progressPercent = progressPercent; }
 
-    public UUID getAssignedSupervisorId() { return assignedSupervisorId; }
-    public void setAssignedSupervisorId(UUID assignedSupervisorId) { this.assignedSupervisorId = assignedSupervisorId; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
