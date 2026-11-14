@@ -1,12 +1,10 @@
 services:
   - type: web
     name: sitesync-backend
-    runtime: java
+    runtime: docker
     plan: free
     region: singapore
     branch: main
-    buildCommand: ./mvnw clean package -DskipTests
-    startCommand: java -Xmx400m -jar target/*.jar
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -17,7 +15,7 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRATION_MS
-        value: 86400000
+        value: "86400000"
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false
       - key: SUPABASE_URL
